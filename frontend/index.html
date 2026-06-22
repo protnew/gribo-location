@@ -1,0 +1,298 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes">
+<meta name="theme-color" content="#1e293b">
+<meta name="description" content="GriboLocation — грибная карта с тепловой картой, приседаниями и GPS-трекингом">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="GriboLocation">
+<meta name="mobile-web-app-capable" content="yes">
+<title>GriboLocation 6620</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha384-sHL9NAb7lN7rfvG5lfHpm643Xkcjzp4jFvuavGOndn6pjVqS6ny56CAt3nsEVT4H" crossorigin="anonymous" />
+<link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" integrity="sha384-pmjIAcz2bAn0xukfxADbZIb3t8oRT9Sv0rvO+BR5Csr6Dhqq+nZs59P0pPKQJkEV" crossorigin="anonymous" />
+<link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css" integrity="sha384-wgw+aLYNQ7dlhK47ZPK7FRACiq7ROZwgFNg0m04avm4CaXS+Z9Y7nMu8yNjBKYC+" crossorigin="anonymous" />
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha384-cxOPjt7s7Iz04uaHJceBmS+qpjv2JkIHNVcuOrM+YHwZOmJGBXI00mdUXEq65HTH" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/leaflet.heat@0.2.0/dist/leaflet-heat.js" integrity="sha384-mFKkGiGvT5vo1fEyGCD3hshDdKmW3wzXW/x+fWriYJArD0R3gawT6lMvLboM22c0" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js" integrity="sha384-eXVCORTRlv4FUUgS/xmOyr66XBVraen8ATNLMESp92FKXLAMiKkerixTiBvXriZr" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/dexie@3.2.4/dist/dexie.js"></script>
+
+<!-- H3, Geodesic, Routing, Elevation, Ruler -->
+<script src="https://unpkg.com/h3-js@4.1.0/dist/h3-js.umd.js"></script>
+<script src="https://unpkg.com/leaflet.geodesic@2.0.0/dist/leaflet.geodesic.umd.min.js"></script>
+<link rel="stylesheet" href="https://unpkg.com/leaflet-routing-machine@latest/dist/leaflet-routing-machine.css" />
+<script src="https://unpkg.com/leaflet-routing-machine@latest/dist/leaflet-routing-machine.js"></script>
+<script src="https://unpkg.com/d3@7.8.5/dist/d3.min.js"></script>
+<link rel="stylesheet" href="https://unpkg.com/@raruto/leaflet-elevation/dist/leaflet-elevation.css" />
+<script src="https://unpkg.com/@raruto/leaflet-elevation/dist/leaflet-elevation.js"></script>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/gokertanrisever/leaflet-ruler@master/src/leaflet-ruler.css" />
+<script src="https://cdn.jsdelivr.net/gh/gokertanrisever/leaflet-ruler@master/src/leaflet-ruler.js"></script>  <link rel="manifest" href="/manifest.webmanifest">
+</head>
+<body>
+
+<header>
+  <div class="logo">
+    <div class="logo-icon">G</div>
+    <span class="logo-text">GriboLocation</span>
+    <span class="logo-id">#6620</span>
+    <span class="version-badge" id="versionBadge">v3.3.0</span>
+    
+    <!-- Telegram Login Widget (Task 1) -->
+    <script async src="https://telegram.org/js/telegram-widget.js?22" data-telegram-login="gribo_location_bot" data-size="small" data-onauth="onTelegramAuth(user)" data-request-access="write" style="margin-left: 10px;"></script>
+    <script type="text/javascript">
+      function onTelegramAuth(user) {
+        alert('Успешная авторизация (Telegram): ' + user.first_name + ' ' + user.last_name);
+        // Here we would send user data to the FastAPI backend for OAuth2 validation
+      }
+    </script>
+  </div>
+  <div class="header-stats">
+    <div class="hstat"><span class="hstat-label">Грибы</span><span class="hstat-val" id="hMush">0</span></div>
+    <div class="hstat"><span class="hstat-label">Приседы</span><span class="hstat-val" id="hSquat">0</span></div>
+    <div class="hstat"><span class="hstat-label">Режим</span><span class="hstat-val mode-val" id="hMode">Реал</span></div>
+  </div>
+</header>
+
+<div class="main-wrap">
+  <nav class="sidebar">
+
+    <!-- Profile -->
+    <div class="sb-section">
+      <div class="sb-title">Профиль</div>
+      <div class="profile-row">
+        <div class="profile-avatar">A</div>
+        <div class="profile-info">
+          <div class="profile-name">Алексей Ш.</div>
+          <div class="profile-level" id="userLevel">Ур. 1 - Новичок</div>
+        </div>
+      </div>
+      
+      <button class="btn btn-secondary btn-sm" style="width:100%;margin-top:8px" onclick="downloadOfflineMap()">Скачать карту для оффлайна</button>
+      <button class="btn btn-secondary btn-sm" style="width:100%;margin-top:8px" onclick="openSocialFeed()">Лента находок (Live)</button>
+
+      <div class="achievements">
+        <div class="badge locked" id="ach0" title="1 гриб">G</div>
+        <div class="badge locked" id="ach1" title="10 грибов">10</div>
+        <div class="badge locked" id="ach2" title="50 приседов">50</div>
+        <div class="badge locked" id="ach3" title="100 грибов">C</div>
+        <div class="badge locked" id="ach4" title="50+50 спец">S</div>
+      </div>
+    </div>
+
+    <!-- Mode -->
+    <div class="sb-section">
+      <div class="sb-title">Режим карты</div>
+      <div class="btn-group">
+        <button class="btn btn-sm btn-secondary active" id="btnReal" onclick="setMode('real')">Реал</button>
+        <button class="btn btn-sm btn-secondary" id="btnFun" onclick="setMode('fun')">Фан</button>
+      </div>
+    </div>
+
+    <!-- Actions -->
+    <div class="sb-section">
+      <div class="sb-title">Управление</div>
+      <button class="btn btn-squat" onclick="doSquat()">ПРИСЕЛ = ГРИБ</button>
+      <div style="height:6px"></div>
+      <button class="btn btn-primary" onclick="enableClickMode()">Добавить гриб (клик по карте)</button>
+      <div style="height:6px"></div>
+      <button class="btn btn-geo" onclick="goToMyLocation()">Где я? (GPS)</button>
+      <div style="height:6px"></div>
+      <button class="btn btn-secondary" onclick="toggleRadar()" title="Концентрические круги (500м, 1км, 2км)">Радар обхода (Geodesic)</button>
+      <div style="height:6px"></div>
+      <button class="btn btn-secondary" onclick="toggleH3Grid()" title="Гексагональная сетка плотности грибов">H3 Сетка (Плотность)</button>
+      <div style="height:6px"></div>
+      <button class="btn btn-primary" style="background:#0e7490; border-color:#083344" onclick="toggleTracker()" title="Записать маршрут движения по лесу">Включить Трекер Пути</button>
+      <div style="height:6px"></div>
+      <button class="btn btn-secondary" onclick="generateForest()">Сгенерировать споры</button>
+      <div style="height:6px"></div>
+      
+      <div style="font-size: 13px; color: #cbd5e1; margin-bottom: 6px; text-align: center;" id="distTracker">Пройдено: 0.0 км</div>
+      <div class="btn-group">
+        <button class="btn btn-sm btn-secondary" onclick="exportGPX()" title="Скачать трек и точки в формате GPX">Экспорт GPX</button>
+        <button class="btn btn-sm btn-secondary" onclick="document.getElementById('gpxInput').click()" title="Загрузить чужой GPX трек">Импорт GPX</button>
+        <input type="file" id="gpxInput" accept=".gpx" style="display:none;" onchange="importGPX(event)">
+      </div>
+      <div style="height:6px"></div>
+      <button class="btn btn-primary" style="background:#10b981; border-color:#059669; color:white;" onclick="openP2PModal()" title="WebRTC: Синхронизация с другом в лесу (оффлайн)">🤝 P2P Синхронизация</button>
+      <div style="height:6px"></div>
+      <button class="btn btn-secondary" onclick="toggleCompass()" title="Включить компас телефона">Компас</button>
+      <div style="height:6px"></div>
+      <!-- Phase 10 buttons -->
+      <div class="btn-group">
+        <button class="btn btn-sm btn-secondary" onclick="toggleSunlightMode()" title="Светлая тема для яркого солнца">☀ Светлый</button>
+        <button class="btn btn-sm" style="background:#dc2626; color:white; border:none; font-weight:bold;" onclick="triggerSOS()" title="Экстренный сигнал SOS">🚨 SOS</button>
+      </div>
+      <div style="height:6px"></div>
+      <button class="btn btn-secondary" id="btnVoice" onclick="toggleVoiceInput()" title="Сказать тип гриба голосом">🎙 Голосовой Ввод (Выкл)</button>
+      <div style="height:6px"></div>
+      <div style="font-size: 13px; color: #cbd5e1; margin-bottom: 6px; text-align: center;" id="batteryTracker">🔋 Батарея: неизвестно</div>
+      <div style="height:6px"></div>
+      <div class="btn-group">
+        <button class="btn btn-secondary btn-sm" onclick="exportData()">Экспорт JSON</button>
+        <button class="btn btn-secondary btn-sm" onclick="document.getElementById('importFile').click()">Импорт JSON</button>
+      </div>
+      <input type="file" id="importFile" accept=".json" style="display:none" onchange="importData(event)">
+      
+      <!-- User Profile Modal Button -->
+      <button class="btn btn-primary btn-sm" style="width:100%; margin-top:8px;" onclick="openProfile()">Мой Профиль и Ачивки</button>
+    </div>
+
+  <!-- User Profile Modal -->
+  <div id="profileModal" class="modal-overlay hidden" style="position:fixed;inset:0;background:rgba(15,23,42,0.8);z-index:9999;display:none;align-items:center;justify-content:center;">
+    <div class="modal-content relative p-6 max-w-sm w-full flex flex-col items-center" style="background:#1e293b; border-radius:12px; border:1px solid #334155;">
+      <button class="modal-close absolute top-4 right-4 text-slate-400 hover:text-white" onclick="document.getElementById('profileModal').style.display='none'" style="position:absolute; top:10px; right:10px; color:white; background:none; border:none; font-size:24px; cursor:pointer;">&times;</button>
+      
+      <div class="w-24 h-24 bg-slate-800 rounded-full border-4 border-emerald-500 flex items-center justify-center mb-4" style="width:96px; height:96px; border-radius:50%; border:4px solid #10b981; margin:0 auto 16px;">
+        <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#10b981" stroke-width="2"><circle cx="12" cy="8" r="5"/><path d="M3 21v-2a7 7 0 0 1 14 0v2"/></svg>
+      </div>
+      <h2 class="text-xl font-bold text-white mb-2" id="profileId" style="color:white; text-align:center;">Охотник</h2>
+      <p class="text-sm text-slate-400 mb-6" style="color:#94a3b8; text-align:center; font-size:12px;">Device ID: <span id="profileUUID">...</span></p>
+      
+      <div class="w-full" style="width:100%; margin-top:16px;">
+        <h3 class="text-lg font-medium text-white mb-3 border-b border-slate-700 pb-2" style="color:white; border-bottom:1px solid #334155; padding-bottom:8px;">Достижения</h3>
+        <div id="badgesContainer" class="achievements" style="display:flex; flex-wrap:wrap; gap:8px;">
+          <!-- Badges injected by JS -->
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- P2P Sync Modal -->
+  <div id="p2pModal" class="modal-overlay hidden" style="position:fixed;inset:0;background:rgba(15,23,42,0.8);z-index:9999;display:none;align-items:center;justify-content:center;">
+    <div class="modal-content relative p-6 max-w-sm w-full flex flex-col items-center" style="background:#1e293b; border-radius:12px; border:1px solid #334155; color:white;">
+      <button class="modal-close absolute top-4 right-4 text-slate-400 hover:text-white" onclick="document.getElementById('p2pModal').style.display='none'" style="position:absolute; top:10px; right:10px; background:none; border:none; font-size:24px; cursor:pointer; color:white;">&times;</button>
+      
+      <h2 class="text-xl font-bold mb-4" style="text-align:center;">P2P Обмен (Оффлайн)</h2>
+      <p class="text-sm text-slate-400 mb-4" style="text-align:center; font-size:12px;">Подключитесь к одной точке доступа Wi-Fi (или раздайте интернет с телефона).</p>
+      
+      <div style="width:100%; display:flex; flex-direction:column; gap:8px;">
+        <button class="btn btn-primary" id="p2pHostBtn" onclick="p2pHost()">1. Создать комнату (Хост)</button>
+        <textarea id="p2pOfferToken" rows="3" readonly placeholder="Здесь появится токен..." style="width:100%; background:#0f172a; color:#10b981; border:1px solid #334155; padding:8px; border-radius:6px; font-family:monospace; font-size:10px; resize:none;"></textarea>
+        
+        <div style="height:1px; background:#334155; margin:8px 0;"></div>
+        
+        <button class="btn btn-secondary" id="p2pJoinBtn" onclick="p2pJoin()">2. Присоединиться (Клиент)</button>
+        <textarea id="p2pAnswerToken" rows="3" placeholder="Вставьте токен хоста сюда..." style="width:100%; background:#0f172a; color:#fde047; border:1px solid #334155; padding:8px; border-radius:6px; font-family:monospace; font-size:10px; resize:none;"></textarea>
+        <button class="btn btn-primary" onclick="p2pConnect()" style="background:#0284c7; border-color:#0369a1;">Подключиться</button>
+      </div>
+      
+      <div id="p2pStatus" style="margin-top:16px; font-size:12px; color:#94a3b8; text-align:center;">Статус: Отключено</div>
+    </div>
+  </div>
+      <div style="height:6px"></div>
+      <button class="btn btn-danger btn-sm" onclick="clearAll()">Очистить всё</button>
+      <!-- Sensor indicator -->
+      <div class="sensor-indicator">
+        <div class="sensor-dot" id="sensorDot"></div>
+        <span id="sensorStatus">Датчик приседаний: выкл</span>
+      </div>
+      <div style="height:4px"></div>
+      <button class="btn btn-secondary btn-sm" id="sensorBtn" onclick="toggleSquatSensor()">Включить авто-присед (акселерометр)</button>
+    </div>
+
+    <!-- Seasonality -->
+    <div class="sb-section">
+      <div class="sb-title">Сезон грибов</div>
+      <div class="season-months" id="seasonMonths"></div>
+      <div class="season-types" id="seasonTypes"></div>
+    </div>
+
+    <!-- Mushroom type -->
+    <div class="sb-section">
+      <div class="sb-title">Тип гриба</div>
+      <div class="type-selector" id="typeSelector"></div>
+    </div>
+
+    <!-- Statistics -->
+    <div class="sb-section">
+      <div class="sb-title">Статистика</div>
+      <div class="stat-grid" id="statGrid"></div>
+    </div>
+
+    <!-- Route info -->
+    <div class="route-info" id="routeInfo">
+      <div class="ri-row"><span class="ri-label">Расстояние</span><span class="ri-val" id="routeDist">—</span></div>
+      <div class="ri-row"><span class="ri-label">Время пешком</span><span class="ri-val" id="routeTime">—</span></div>
+      <div class="ri-row"><span class="ri-label">Точек в маршруте</span><span class="ri-val" id="routePoints">—</span></div>
+    </div>
+
+    <!-- Export/Import -->
+    <div class="sb-section">
+      <div class="sb-title">Данные</div>
+      <div class="btn-group">
+        <button class="btn btn-secondary btn-sm" onclick="exportData()">Экспорт JSON</button>
+        <button class="btn btn-secondary btn-sm" onclick="document.getElementById('importFile').click()">Импорт JSON</button>
+      </div>
+      <input type="file" id="importFile" accept=".json" style="display:none" onchange="importData(event)">
+    </div>
+
+    <!-- Legend -->
+    <div class="sb-section">
+      <div class="sb-title">Тепловая карта</div>
+      <div class="legend-list">
+        <div class="legend-item"><div class="legend-bar" style="background:linear-gradient(90deg,#22c55e,#86efac)"></div>Низкая плотность</div>
+        <div class="legend-item"><div class="legend-bar" style="background:linear-gradient(90deg,#86efac,#fde047)"></div>Средняя</div>
+        <div class="legend-item"><div class="legend-bar" style="background:linear-gradient(90deg,#fde047,#f97316)"></div>Высокая</div>
+        <div class="legend-item"><div class="legend-bar" style="background:linear-gradient(90deg,#f97316,#dc2626)"></div>Очень высокая</div>
+        <div class="legend-item"><div class="legend-bar" style="background:linear-gradient(90deg,#dc2626,#7f1d1d)"></div>Грибной рай</div>
+      </div>
+    </div>
+
+    <!-- Leaderboard -->
+    <div class="sb-section">
+      <div class="sb-title">Рейтинг (Демо-данные)</div>
+      <table class="lb">
+        <tr><th>#</th><th>Грибник</th><th style="text-align:right">Грибы</th><th style="text-align:right">Приседы</th></tr>
+        <tr><td class="rank-num">1</td><td>Lesnoy_Volk</td><td style="text-align:right">347</td><td style="text-align:right">892</td></tr>
+        <tr><td class="rank-num">2</td><td>Belka_2026</td><td style="text-align:right">281</td><td style="text-align:right">654</td></tr>
+        <tr><td class="rank-num">3</td><td>Podberezovik</td><td style="text-align:right">195</td><td style="text-align:right">403</td></tr>
+        <tr><td>4</td><td>Opyonok_Pro</td><td style="text-align:right">128</td><td style="text-align:right">267</td></tr>
+        <tr><td>5</td><td>Mukhomor_H</td><td style="text-align:right">92</td><td style="text-align:right">198</td></tr>
+        <tr class="me-row"><td>6</td><td>Alexey S.</td><td style="text-align:right" id="lbMush">0</td><td style="text-align:right" id="lbSquat">0</td></tr>
+      </table>
+    </div>
+
+  </nav>
+
+  <div id="map"></div>
+</div>
+
+<!-- FAB -->
+<button class="squat-fab" onclick="doSquat()" title="Приседание = гриб на карте">
+  <span>&#9679;</span>
+  <span class="fab-count" id="fabCount">0</span>
+</button>
+
+<!-- Toast -->
+<div class="toast-container"><div class="toast" id="toast"></div></div>
+
+<!-- Loading overlay -->
+<div class="loading-overlay" id="loadingOverlay">
+  <div style="text-align:center">
+    <div class="loading-spinner"></div>
+    <div class="loading-text" id="loadingText">Загрузка...</div>
+  </div>
+</div>
+
+<!-- Status bar -->
+<div class="status-bar">
+  <span id="statusLeft">Клик по карте = гриб | Кнопка ПРИСЕЛ = автомат</span>
+  <span id="weatherStatus">🌤 --°C</span>
+  <span id="statusRight">53.9000, 27.5500 | zoom 11</span>
+</div>
+
+  <script type="module" src="/src/main.js"></script>
+  <script>
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('/sw.js').then((reg) => {
+          console.log('ServiceWorker registered with scope:', reg.scope);
+        }).catch((err) => {
+          console.error('ServiceWorker registration failed:', err);
+        });
+      });
+    }
+  </script>
+</body>
+</html>
