@@ -1,0 +1,24 @@
+# === INTERNAL DOCS - NEVER IN PUBLIC GIT ===
+docs/
+*.xlsx
+*HANDOFF*
+*CORRECTIVE*
+*PROMPT*
+*backlog*
+*BACKLOG*
+*.db
+*.db-wal
+*.db-shm
+*.sqlite
+.env
+.env.*
+node_modules/
+__pycache__/
+.pytest_cache/
+dist/
+dev-dist/
+playwright-report/
+test-results/
+*.pyc
+.DS_Store
+Thumbs.db
