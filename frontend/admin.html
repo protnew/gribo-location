@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>Глобальная Админка - Властелин Леса</title>
+  
+  <!-- Leaflet -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  
+  <!-- Leaflet Heat -->
+  <script src="https://unpkg.com/leaflet.heat/dist/leaflet-heat.js"></script>
+
+  <!-- H3 -->
+  <script src="https://unpkg.com/h3-js@4.1.0/dist/h3-js.umd.js"></script>
+
+  <style>
+    body { margin:0; padding:0; background:#0f172a; color:#f8fafc; font-family:'Segoe UI', Roboto, Helvetica, Arial, sans-serif; display: flex; height: 100vh; overflow: hidden; }
+    #sidebar { width: 300px; padding: 20px; background: rgba(15,23,42,0.95); z-index: 1000; box-shadow: 2px 0 10px rgba(0,0,0,0.5); overflow-y: auto; }
+    #map { flex: 1; height: 100vh; background: #000; }
+    .stat-card { background: #1e293b; padding: 15px; border-radius: 8px; margin-bottom: 15px; border: 1px solid #334155; }
+    .stat-value { font-size: 24px; font-weight: bold; color: #38bdf8; }
+    .stat-label { font-size: 12px; color: #94a3b8; text-transform: uppercase; letter-spacing: 1px; }
+    h2 { margin-top: 0; color: #f1f5f9; border-bottom: 2px solid #334155; padding-bottom: 10px; }
+    .btn { width: 100%; padding: 12px; background: #0284c7; color: white; border: none; border-radius: 6px; font-weight: 600; cursor: pointer; transition: 0.2s; margin-bottom: 10px; }
+    .btn:hover { background: #0369a1; }
+    .btn-danger { background: #dc2626; }
+    .btn-danger:hover { background: #b91c1c; }
+  </style>
+</head>
+<body>
+
+<div id="sidebar">
+  <h2>Админ Панель</h2>
+  
+  <div class="stat-card">
+    <div class="stat-value" id="val-users">0</div>
+    <div class="stat-label">Уникальных Грибников</div>
+  </div>
+  
+  <div class="stat-card">
+    <div class="stat-value" id="val-mushrooms">0</div>
+    <div class="stat-label">Всего Грибов</div>
+  </div>
+  
+  <div class="stat-card">
+    <div class="stat-value" id="val-paths">0</div>
+    <div class="stat-label">Точек маршрутов</div>
+  </div>
+  
+  <hr style="border-color:#334155; margin: 20px 0;">
+  
+  <div style="margin-bottom: 15px;">
+    <label style="font-size:12px; color:#94a3b8;">Фильтр по типу:</label>
+    <select id="filterType" style="width:100%; padding:8px; background:#1e293b; color:#fff; border:1px solid #334155; border-radius:4px;" onchange="applyFilters()">
+      <option value="all">Все грибы</option>
+      <option value="white">Белый</option>
+      <option value="brown">Подберёзовик</option>
+      <option value="chanterelle">Лисичка</option>
+    </select>
+  </div>
+  
+  <div style="margin-bottom: 15px;">
+    <label style="font-size:12px; color:#94a3b8;">Фильтр по времени:</label>
+    <select id="filterTime" style="width:100%; padding:8px; background:#1e293b; color:#fff; border:1px solid #334155; border-radius:4px;" onchange="applyFilters()">
+      <option value="all">Всё время</option>
+      <option value="today">За сегодня</option>
+      <option value="week">За неделю</option>
+    </select>
+  </div>
+  
+  <button class="btn" onclick="toggleHeatmap()">Тепловая Карта (Грибы)</button>
+  <button class="btn" onclick="toggleH3()">ИИ-Сетка Плотности (H3)</button>
+  <button class="btn" onclick="togglePaths()">Все Маршруты Людей</button>
+  <button class="btn btn-danger" style="margin-top:10px;" onclick="fetchData()">Обновить Данные</button>
+</div>
+
+<div id="map"></div>
+
+<script>
+  const map = L.map('map', { zoomControl: false }).setView([53.9, 27.55], 7);
+  
+  L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+    attribution: '&copy; CartoDB',
+    subdomains: 'abcd',
+    maxZoom: 19
+  }).addTo(map);
+
+  L.control.zoom({ position: 'topright' }).addTo(map);
+
+  let globalData = { mushrooms: [], paths: [] };
+  let filteredData = { mushrooms: [], paths: [] };
+  
+  let heatLayer = null;
+  let h3Layer = null;
+  let pathsLayer = null;
+
+  async function fetchData() {
+    try {
+      const res = await fetch('http://localhost:8000/api/admin/all_mushrooms');
+      const data = await res.json();
+      globalData = data;
+      applyFilters();
+      console.log('Admin data loaded:', data);
+    } catch(e) {
+      alert('Ошибка подключения к серверу.');
+      console.error(e);
+    }
+  }
+
+  function applyFilters() {
+    const typeFilter = document.getElementById('filterType').value;
+    const timeFilter = document.getElementById('filterTime').value;
+    const now = new Date();
+    
+    filteredData.mushrooms = globalData.mushrooms.filter(m => {
+      if (typeFilter !== 'all' && m.type !== typeFilter) return false;
+      return true;
+      // In a real app we'd check m.time against timeFilter here
+    });
+    
+    filteredData.paths = globalData.paths; // Keep all paths or filter by time
+    
+    const uniqueUsers = new Set(filteredData.mushrooms.map(m => m.device_id).concat(filteredData.paths.map(p => p.device_id)));
+    
+    document.getElementById('val-users').innerText = uniqueUsers.size;
+    document.getElementById('val-mushrooms').innerText = filteredData.mushrooms.length;
+    document.getElementById('val-paths').innerText = filteredData.paths.length;
+    
+    // Refresh layers if active
+    if (heatLayer) { toggleHeatmap(); toggleHeatmap(); }
+    if (h3Layer) { toggleH3(); toggleH3(); }
+    if (pathsLayer) { togglePaths(); togglePaths(); }
+  }
+
+  function toggleHeatmap() {
+    if (heatLayer) { map.removeLayer(heatLayer); heatLayer = null; return; }
+    const heatData = filteredData.mushrooms.map(m => [m.lat, m.lng, 1]);
+    heatLayer = L.heatLayer(heatData, { radius: 25, blur: 15, maxZoom: 14 }).addTo(map);
+  }
+
+  function toggleH3() {
+    if (h3Layer) { map.removeLayer(h3Layer); h3Layer = null; return; }
+    if (typeof h3 === 'undefined') { alert('H3 library not loaded'); return; }
+    
+    const resolution = 7;
+    const counts = new Map();
+    let max = 0;
+    
+    filteredData.mushrooms.forEach(m => {
+      const cell = h3.latLngToCell(m.lat, m.lng, resolution);
+      const c = (counts.get(cell) || 0) + 1;
+      counts.set(cell, c);
+      if (c > max) max = c;
+    });
+
+    const polys = [];
+    counts.forEach((c, cell) => {
+      const boundary = h3.cellToBoundary(cell);
+      const intensity = 0.3 + (0.7 * (c / max));
+      polys.push(L.polygon(boundary, { color: '#facc15', weight: 1, fillColor: '#f59e0b', fillOpacity: intensity })
+        .bindPopup(`H3: ${cell}<br>Грибов: ${c}`));
+    });
+
+    h3Layer = L.layerGroup(polys).addTo(map);
+  }
+
+  function togglePaths() {
+    if (pathsLayer) { map.removeLayer(pathsLayer); pathsLayer = null; return; }
+    
+    const byDevice = {};
+    filteredData.paths.forEach(p => {
+      if (!byDevice[p.device_id]) byDevice[p.device_id] = { points: [], mushCount: 0 };
+      byDevice[p.device_id].points.push([p.lat, p.lng]);
+    });
+    
+    filteredData.mushrooms.forEach(m => {
+      if (byDevice[m.device_id]) byDevice[m.device_id].mushCount++;
+    });
+    
+    const lines = [];
+    for (const [id, data] of Object.entries(byDevice)) {
+      if (data.points.length > 1) {
+        lines.push(L.polyline(data.points, { color: '#0ea5e9', weight: 3, opacity: 0.6 })
+          .bindPopup(`<b>Следопыт:</b> ${id.substr(0,10)}...<br><b>Точек пути:</b> ${data.points.length}<br><b>Нашел грибов:</b> ${data.mushCount}`));
+      }
+    }
+    
+    pathsLayer = L.layerGroup(lines).addTo(map);
+  }
+
+  // Init
+  fetchData();
+</script>
+</body>
+</html>
