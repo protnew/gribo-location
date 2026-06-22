@@ -1,0 +1,65 @@
+version: '3.8'
+services:
+  db:
+    image: postgis/postgis:15-3.4
+    environment:
+      POSTGRES_USER: gribouser
+      POSTGRES_PASSWORD: gribopassword
+      POSTGRES_DB: gribodb
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+  
+  backend:
+    build: ./backend
+    ports:
+      - "8000:8000"
+    depends_on:
+      - db
+    environment:
+      - DATABASE_URL=postgresql://gribouser:gribopassword@db:5432/gribodb
+      - JWT_SECRET_KEY=dev_secret
+      - TG_BOT_TOKEN=${TG_BOT_TOKEN}
+      - TG_CHAT_ID=${TG_CHAT_ID}
+      - REDIS_URL=redis://redis:6379/0
+      - MINIO_URL=http://minio:9000
+      - MINIO_ACCESS_KEY=gribo_admin
+      - MINIO_SECRET_KEY=gribo_super_secret
+
+  osrm:
+    image: osrm/osrm-backend
+    ports:
+      - "5000:5000"
+    volumes:
+      - ./osrm-data:/data
+    command: "osrm-routed --algorithm mld /data/map.osrm"
+
+  redis:
+    image: redis:alpine
+    ports:
+      - "6379:6379"
+
+  minio:
+    image: minio/minio
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    environment:
+      - MINIO_ROOT_USER=gribo_admin
+      - MINIO_ROOT_PASSWORD=gribo_super_secret
+    command: server /data --console-address ":9001"
+    volumes:
+      - minio_data:/data
+
+  frontend:
+    build: ./frontend
+    ports:
+      - "80:80"
+    depends_on:
+      - backend
+
+volumes:
+  pgdata:
+  minio_data:
+
